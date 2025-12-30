@@ -1,34 +1,49 @@
 
-import React, { useState } from 'react';
-import { Search, Plus, User, Wallet, CheckCircle2, ShieldAlert, RefreshCw, Cloud, CloudOff } from 'lucide-react';
-import { CLOUD_SYNC_URL } from '../constants';
+import React, { useState, useEffect } from 'react';
+import { Search, Plus, User, Wallet, CheckCircle2, ShieldAlert, RefreshCw, Cloud } from 'lucide-react';
+import { UserAccount } from '../types';
 
-export default function AdminPanel({ onForceSync, isSyncing }: { onForceSync?: () => void, isSyncing?: boolean }) {
+interface AdminPanelProps {
+  users: Record<string, UserAccount>;
+  setUsers: React.Dispatch<React.SetStateAction<Record<string, UserAccount>>>;
+  onPush: (db: Record<string, UserAccount>) => Promise<void>;
+  onPull: () => Promise<Record<string, UserAccount>>;
+  isSyncing: boolean;
+}
+
+export default function AdminPanel({ users, setUsers, onPush, onPull, isSyncing }: AdminPanelProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [addAmount, setAddAmount] = useState(100);
   const [message, setMessage] = useState('');
 
-  const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-  const userList = Object.values(users).filter((u: any) => 
+  // Pull latest data when entering admin panel to ensure all cross-device users are seen
+  useEffect(() => {
+    onPull();
+  }, []);
+
+  const userList = Object.values(users).filter((u: UserAccount) => 
     u.username.toLowerCase().includes(searchTerm.toLowerCase()) && !u.isAdmin
   );
 
   const addTokens = async (username: string) => {
-    const allUsers = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-    if (allUsers[username]) {
-      allUsers[username].balance += addAmount;
-      localStorage.setItem('rewardly_users', JSON.stringify(allUsers));
+    // 1. Pull most recent data again to prevent overwriting other admin changes
+    const latestDB = await onPull();
+    
+    if (latestDB[username]) {
+      const updatedUser = { 
+        ...latestDB[username], 
+        balance: latestDB[username].balance + addAmount 
+      };
       
-      // Push the update to cloud so it reflects on user's phone
-      try {
-        await fetch(CLOUD_SYNC_URL, {
-          method: 'POST',
-          body: JSON.stringify(allUsers)
-        });
-        setMessage(`Successfully added ${addAmount} tokens to ${username} (Synced to Cloud)`);
-      } catch (e) {
-        setMessage(`Added ${addAmount} to ${username} (Local only - Cloud error)`);
-      }
+      const updatedDB = { ...latestDB, [username]: updatedUser };
+      
+      // 2. Update local state
+      setUsers(updatedDB);
+      
+      // 3. Push to cloud
+      await onPush(updatedDB);
+      
+      setMessage(`Successfully added ${addAmount} tokens to ${username}`);
       setTimeout(() => setMessage(''), 3000);
     }
   };
@@ -41,18 +56,18 @@ export default function AdminPanel({ onForceSync, isSyncing }: { onForceSync?: (
             <ShieldAlert className="text-[#00e701]" />
             ADMIN CONTROL
           </h1>
-          <p className="text-gray-400">Manage user balances and synchronize global data.</p>
+          <p className="text-gray-400">Manage global user database across all devices.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${isSyncing ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/50' : 'bg-[#00e701]/10 text-[#00e701] border border-[#00e701]/50'}`}>
             {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <Cloud size={14} />}
-            {isSyncing ? 'Syncing...' : 'Cloud Connected'}
+            {isSyncing ? 'Syncing...' : 'Live Sync On'}
           </div>
           <button 
-            onClick={onForceSync}
+            onClick={() => onPull()}
             disabled={isSyncing}
             className="p-2 bg-[#0f212e] hover:bg-[#213743] text-gray-400 hover:text-white rounded-lg border border-[#213743] transition-colors"
-            title="Force Global Refresh"
+            title="Refresh All Devices"
           >
             <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
           </button>
@@ -68,7 +83,6 @@ export default function AdminPanel({ onForceSync, isSyncing }: { onForceSync?: (
             onChange={(e) => setAddAmount(Number(e.target.value))}
             className="w-full bg-[#0f212e] border border-[#213743] rounded-lg p-3 text-white focus:outline-none focus:border-[#00e701]"
           />
-          <p className="text-[10px] text-gray-500 mt-2 italic">Amount added when clicking 'Grant'</p>
         </div>
 
         <div className="md:col-span-2 bg-[#1a2c38] p-6 rounded-xl border border-[#213743] flex flex-col">
@@ -76,7 +90,7 @@ export default function AdminPanel({ onForceSync, isSyncing }: { onForceSync?: (
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
             <input 
               type="text"
-              placeholder="Search usernames..."
+              placeholder="Search all players..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-[#0f212e] border border-[#213743] rounded-lg p-3 pl-10 text-white focus:outline-none focus:border-[#00e701]"
@@ -91,28 +105,28 @@ export default function AdminPanel({ onForceSync, isSyncing }: { onForceSync?: (
           )}
 
           <div className="space-y-2 overflow-y-auto max-h-[400px] pr-2">
-            {userList.length > 0 ? (userList.map((u: any) => (
-              <div key={u.username} className="flex items-center justify-between p-4 bg-[#0f212e] rounded-lg border border-[#213743]">
+            {userList.length > 0 ? (userList.map((u: UserAccount) => (
+              <div key={u.username} className="flex items-center justify-between p-4 bg-[#0f212e] rounded-lg border border-[#213743] hover:border-[#2f4553] transition-colors">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#2f4553] flex items-center justify-center font-bold">
+                  <div className="w-10 h-10 rounded-full bg-[#2f4553] flex items-center justify-center font-bold text-[#00e701]">
                     {u.username[0].toUpperCase()}
                   </div>
                   <div>
                     <div className="font-bold">{u.username}</div>
                     <div className="text-xs text-gray-500 flex items-center gap-1">
-                      <Wallet size={12} /> {u.balance} tokens
+                      <Wallet size={12} /> {u.balance.toLocaleString()} tokens
                     </div>
                   </div>
                 </div>
                 <button 
                   onClick={() => addTokens(u.username)}
-                  className="bg-[#00e701] text-[#0f212e] px-4 py-2 rounded font-bold text-sm flex items-center gap-2 hover:bg-[#00c901]"
+                  className="bg-[#00e701] text-[#0f212e] px-4 py-2 rounded font-black text-xs uppercase flex items-center gap-2 hover:bg-[#00c901] transition-all transform active:scale-95"
                 >
-                  <Plus size={16} /> Grant
+                  <Plus size={14} /> Grant
                 </button>
               </div>
             ))) : (
-              <div className="text-center py-10 text-gray-500 italic">No users found</div>
+              <div className="text-center py-10 text-gray-500 italic">No registered players found</div>
             )}
           </div>
         </div>

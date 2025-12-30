@@ -25,7 +25,8 @@ import {
   CircleDashed,
   Languages,
   Swords,
-  Cloud
+  Cloud,
+  RefreshCw
 } from 'lucide-react';
 import Mines from './components/games/Mines.tsx';
 import Soccer from './components/games/Soccer.tsx';
@@ -121,7 +122,11 @@ const Header = ({ user, toggleSidebar, lang, isSyncing }: { user: UserAccount | 
         </button>
         <div className="hidden md:flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-400 italic">{t('welcome_back')}, {user?.username}</span>
-          {isSyncing && <Cloud size={14} className="text-[#00e701] animate-pulse" />}
+          {isSyncing ? (
+            <RefreshCw size={14} className="text-[#00e701] animate-spin" />
+          ) : (
+            <Cloud size={14} className="text-[#00e701]" />
+          )}
         </div>
       </div>
 
@@ -146,19 +151,13 @@ const Header = ({ user, toggleSidebar, lang, isSyncing }: { user: UserAccount | 
 const AppContent = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [users, setUsers] = useState<Record<string, UserAccount>>({});
   const [lang, setLang] = useState<'en' | 'bs'>(() => {
     return (localStorage.getItem('rewardly_lang') as 'en' | 'bs') || 'en';
   });
   
-  const [user, setUser] = useState<UserAccount | null>(() => {
-    try {
-      const saved = localStorage.getItem('rewardly_current_user');
-      if (!saved) return null;
-      const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-      return users[saved] || null;
-    } catch (e) {
-      return null;
-    }
+  const [currentUserKey, setCurrentUserKey] = useState<string | null>(() => {
+    return localStorage.getItem('rewardly_current_user');
   });
 
   const pullFromCloud = useCallback(async () => {
@@ -166,54 +165,40 @@ const AppContent = () => {
       setIsSyncing(true);
       const res = await fetch(CLOUD_SYNC_URL);
       if (res.ok) {
-        const cloudUsers = await res.json();
-        const localUsers = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-        
-        // Comprehensive Merge: Combine cloud and local, cloud wins on conflict
-        const merged = { ...localUsers, ...cloudUsers };
-        localStorage.setItem('rewardly_users', JSON.stringify(merged));
-        
-        // Update session state
-        const currentUserKey = localStorage.getItem('rewardly_current_user');
-        if (currentUserKey && merged[currentUserKey]) {
-          setUser(merged[currentUserKey]);
-        }
-        return merged;
+        const cloudData = await res.json();
+        // Force state update and local cache update
+        setUsers(cloudData);
+        localStorage.setItem('rewardly_users', JSON.stringify(cloudData));
+        return cloudData;
       }
     } catch (e) {
-      console.warn('Cloud pull failed', e);
+      console.warn('Cloud pull failed, falling back to local storage', e);
+      const local = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+      setUsers(local);
+      return local;
     } finally {
       setIsSyncing(false);
     }
-    return JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+    return {};
   }, []);
 
-  const pushToCloud = async (users: any) => {
+  const pushToCloud = async (latestUsers: Record<string, UserAccount>) => {
     try {
       setIsSyncing(true);
-      // To be safe, we pull first, merge locally, then push
-      const currentCloudRes = await fetch(CLOUD_SYNC_URL);
-      let latestGlobal = {};
-      if (currentCloudRes.ok) {
-        latestGlobal = await currentCloudRes.json();
-      }
-      
-      const mergedToPush = { ...latestGlobal, ...users };
-      
       await fetch(CLOUD_SYNC_URL, {
-        method: 'POST',
-        body: JSON.stringify(mergedToPush)
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(latestUsers)
       });
-      
-      localStorage.setItem('rewardly_users', JSON.stringify(mergedToPush));
+      localStorage.setItem('rewardly_users', JSON.stringify(latestUsers));
     } catch (e) {
-      console.warn('Cloud push failed', e);
+      console.error('Failed to sync to cloud', e);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Immediate sync on mount to catch other devices' registrations
+  // Sync on mount
   useEffect(() => {
     pullFromCloud();
   }, [pullFromCloud]);
@@ -225,67 +210,73 @@ const AppContent = () => {
   };
 
   const handleAuthSuccess = async (userData: UserAccount) => {
-    // First, save locally
-    const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-    users[userData.username] = userData;
-    localStorage.setItem('rewardly_users', JSON.stringify(users));
-    localStorage.setItem('rewardly_current_user', userData.username);
-    setUser(userData);
+    // 1. Pull latest to ensure we don't overwrite others
+    const latest = await pullFromCloud();
     
-    // Then push to cloud
-    await pushToCloud(users);
+    // 2. Add/Update user
+    const updated = { ...latest, [userData.username]: userData };
+    
+    // 3. Update local states
+    setUsers(updated);
+    setCurrentUserKey(userData.username);
+    localStorage.setItem('rewardly_current_user', userData.username);
+    
+    // 4. Push to cloud
+    await pushToCloud(updated);
   };
 
   const handleLogout = () => {
-    setUser(null);
+    setCurrentUserKey(null);
     localStorage.removeItem('rewardly_current_user');
   };
 
   const updateStats = async (win: boolean, amount: number) => {
-    if (!user) return;
-    try {
-      const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-      const updatedUser = {
-        ...user,
-        balance: user.balance + amount,
-        totalWins: win ? user.totalWins + 1 : user.totalWins,
-        gamesPlayed: user.gamesPlayed + 1
-      };
-      users[user.username] = updatedUser;
-      localStorage.setItem('rewardly_users', JSON.stringify(users));
-      setUser(updatedUser);
-      
-      await pushToCloud(users);
-    } catch (e) {
-      console.error('Update failed', e);
-    }
+    if (!currentUserKey || !users[currentUserKey]) return;
+    
+    // Pull latest to ensure consistency
+    const latest = await pullFromCloud();
+    const currentUser = latest[currentUserKey] || users[currentUserKey];
+
+    const updatedUser = {
+      ...currentUser,
+      balance: currentUser.balance + amount,
+      totalWins: win ? currentUser.totalWins + 1 : currentUser.totalWins,
+      gamesPlayed: currentUser.gamesPlayed + 1
+    };
+
+    const updatedDatabase = { ...latest, [currentUserKey]: updatedUser };
+    setUsers(updatedDatabase);
+    
+    await pushToCloud(updatedDatabase);
   };
 
-  if (!user) {
+  const currentUser = currentUserKey ? users[currentUserKey] : null;
+
+  if (!currentUserKey) {
     return <Auth onAuthSuccess={handleAuthSuccess} onSyncRequested={pullFromCloud} isSyncing={isSyncing} />;
   }
 
   return (
     <div className="min-h-screen bg-[#0f212e] relative">
-      <Sidebar isOpen={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} user={user} onLogout={handleLogout} lang={lang} />
+      <Sidebar isOpen={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} user={currentUser} onLogout={handleLogout} lang={lang} />
       
       <div className="md:ml-64 flex flex-col min-h-screen">
-        <Header user={user} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} lang={lang} isSyncing={isSyncing} />
+        <Header user={currentUser} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} lang={lang} isSyncing={isSyncing} />
         
         <main className="flex-1 p-4 md:p-8">
           <Routes>
             <Route path="/" element={<GamesLobby lang={lang} />} />
-            <Route path="/mines" element={<Mines onResult={updateStats} balance={user.balance} />} />
-            <Route path="/soccer" element={<Soccer onResult={updateStats} balance={user.balance} />} />
-            <Route path="/chicken" element={<Chicken onResult={updateStats} balance={user.balance} />} />
-            <Route path="/dice" element={<Dice onResult={updateStats} balance={user.balance} />} />
-            <Route path="/coinflip" element={<Coinflip onResult={updateStats} balance={user.balance} />} />
-            <Route path="/limbo" element={<Limbo onResult={updateStats} balance={user.balance} />} />
-            <Route path="/tower" element={<Tower onResult={updateStats} balance={user.balance} />} />
+            <Route path="/mines" element={<Mines onResult={updateStats} balance={currentUser?.balance ?? 0} />} />
+            <Route path="/soccer" element={<Soccer onResult={updateStats} balance={currentUser?.balance ?? 0} />} />
+            <Route path="/chicken" element={<Chicken onResult={updateStats} balance={currentUser?.balance ?? 0} />} />
+            <Route path="/dice" element={<Dice onResult={updateStats} balance={currentUser?.balance ?? 0} />} />
+            <Route path="/coinflip" element={<Coinflip onResult={updateStats} balance={currentUser?.balance ?? 0} />} />
+            <Route path="/limbo" element={<Limbo onResult={updateStats} balance={currentUser?.balance ?? 0} />} />
+            <Route path="/tower" element={<Tower onResult={updateStats} balance={currentUser?.balance ?? 0} />} />
             <Route path="/battle-royal" element={<BattleRoyal onResult={updateStats} lang={lang} />} />
-            <Route path="/transactions" element={<TransactionPage user={user} lang={lang} />} />
-            <Route path="/profile" element={<Profile stats={user} lang={lang} />} />
-            <Route path="/admin" element={user.isAdmin ? <AdminPanel onForceSync={pullFromCloud} isSyncing={isSyncing} /> : <Navigate to="/" />} />
+            <Route path="/transactions" element={<TransactionPage user={currentUser!} lang={lang} />} />
+            <Route path="/profile" element={<Profile stats={currentUser!} lang={lang} />} />
+            <Route path="/admin" element={currentUser?.isAdmin ? <AdminPanel users={users} setUsers={setUsers} onPush={pushToCloud} onPull={pullFromCloud} isSyncing={isSyncing} /> : <Navigate to="/" />} />
           </Routes>
         </main>
 
