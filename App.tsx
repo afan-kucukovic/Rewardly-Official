@@ -161,22 +161,6 @@ const AppContent = () => {
     }
   });
 
-  // Push local users to Cloud
-  const pushToCloud = async (users: any) => {
-    try {
-      setIsSyncing(true);
-      await fetch(CLOUD_SYNC_URL, {
-        method: 'POST',
-        body: JSON.stringify(users)
-      });
-    } catch (e) {
-      console.warn('Cloud push failed, using local only', e);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Pull users from Cloud
   const pullFromCloud = useCallback(async () => {
     try {
       setIsSyncing(true);
@@ -185,24 +169,51 @@ const AppContent = () => {
         const cloudUsers = await res.json();
         const localUsers = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
         
-        // Merge strategy: Cloud is source of truth but keep current local session if exists
+        // Comprehensive Merge: Combine cloud and local, cloud wins on conflict
         const merged = { ...localUsers, ...cloudUsers };
         localStorage.setItem('rewardly_users', JSON.stringify(merged));
         
-        // Update current user state if they are logged in
+        // Update session state
         const currentUserKey = localStorage.getItem('rewardly_current_user');
         if (currentUserKey && merged[currentUserKey]) {
           setUser(merged[currentUserKey]);
         }
+        return merged;
       }
     } catch (e) {
       console.warn('Cloud pull failed', e);
     } finally {
       setIsSyncing(false);
     }
+    return JSON.parse(localStorage.getItem('rewardly_users') || '{}');
   }, []);
 
-  // Sync on mount
+  const pushToCloud = async (users: any) => {
+    try {
+      setIsSyncing(true);
+      // To be safe, we pull first, merge locally, then push
+      const currentCloudRes = await fetch(CLOUD_SYNC_URL);
+      let latestGlobal = {};
+      if (currentCloudRes.ok) {
+        latestGlobal = await currentCloudRes.json();
+      }
+      
+      const mergedToPush = { ...latestGlobal, ...users };
+      
+      await fetch(CLOUD_SYNC_URL, {
+        method: 'POST',
+        body: JSON.stringify(mergedToPush)
+      });
+      
+      localStorage.setItem('rewardly_users', JSON.stringify(mergedToPush));
+    } catch (e) {
+      console.warn('Cloud push failed', e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Immediate sync on mount to catch other devices' registrations
   useEffect(() => {
     pullFromCloud();
   }, [pullFromCloud]);
@@ -214,11 +225,14 @@ const AppContent = () => {
   };
 
   const handleAuthSuccess = async (userData: UserAccount) => {
-    setUser(userData);
-    localStorage.setItem('rewardly_current_user', userData.username);
-    
-    // Immediately sync to cloud on login/signup
+    // First, save locally
     const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+    users[userData.username] = userData;
+    localStorage.setItem('rewardly_users', JSON.stringify(users));
+    localStorage.setItem('rewardly_current_user', userData.username);
+    setUser(userData);
+    
+    // Then push to cloud
     await pushToCloud(users);
   };
 
@@ -241,7 +255,6 @@ const AppContent = () => {
       localStorage.setItem('rewardly_users', JSON.stringify(users));
       setUser(updatedUser);
       
-      // Sync game results to cloud
       await pushToCloud(users);
     } catch (e) {
       console.error('Update failed', e);
@@ -249,7 +262,7 @@ const AppContent = () => {
   };
 
   if (!user) {
-    return <Auth onAuthSuccess={handleAuthSuccess} />;
+    return <Auth onAuthSuccess={handleAuthSuccess} onSyncRequested={pullFromCloud} isSyncing={isSyncing} />;
   }
 
   return (

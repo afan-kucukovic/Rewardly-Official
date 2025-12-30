@@ -1,19 +1,26 @@
 
-import React, { useState } from 'react';
-import { LogIn, UserPlus, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { LogIn, UserPlus, ShieldAlert, RefreshCw, Cloud } from 'lucide-react';
 import { ADMIN_USERNAME, STARTING_BALANCE } from '../constants';
 
-export default function Auth({ onAuthSuccess }: { onAuthSuccess: (user: any) => void }) {
+export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing }: { onAuthSuccess: (user: any) => void, onSyncRequested: () => Promise<any>, isSyncing: boolean }) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [bootstrapping, setBootstrapping] = useState(true);
 
-  const handleAction = (e: React.FormEvent) => {
+  // Sync data from cloud immediately when the Auth screen appears
+  useEffect(() => {
+    onSyncRequested().finally(() => setBootstrapping(false));
+  }, []);
+
+  const handleAction = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
-    const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+    // Always fetch latest data before an auth attempt
+    const users = await onSyncRequested();
 
     if (isLogin) {
       // Admin Special Case
@@ -25,8 +32,6 @@ export default function Auth({ onAuthSuccess }: { onAuthSuccess: (user: any) => 
           gamesPlayed: 0,
           isAdmin: true
         };
-        users[ADMIN_USERNAME] = adminUser;
-        localStorage.setItem('rewardly_users', JSON.stringify(users));
         onAuthSuccess(adminUser);
         return;
       }
@@ -55,15 +60,20 @@ export default function Auth({ onAuthSuccess }: { onAuthSuccess: (user: any) => 
         gamesPlayed: 0,
         isAdmin: false
       };
-      users[username] = newUser;
-      localStorage.setItem('rewardly_users', JSON.stringify(users));
       onAuthSuccess(newUser);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#0f212e] flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-[#1a2c38] rounded-2xl border border-[#213743] overflow-hidden shadow-2xl">
+      <div className="w-full max-w-md bg-[#1a2c38] rounded-2xl border border-[#213743] overflow-hidden shadow-2xl relative">
+        {bootstrapping && (
+          <div className="absolute inset-0 bg-[#0f212e]/90 z-50 flex flex-col items-center justify-center gap-4 backdrop-blur-sm">
+            <RefreshCw className="text-[#00e701] animate-spin" size={48} />
+            <p className="text-sm font-bold uppercase tracking-widest text-[#00e701]">Connecting to Rewardly Cloud...</p>
+          </div>
+        )}
+        
         <div className="p-8">
           <div className="text-center mb-10">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-[#00e701]/10 rounded-2xl border border-[#00e701] mb-4">
@@ -80,6 +90,14 @@ export default function Auth({ onAuthSuccess }: { onAuthSuccess: (user: any) => 
                 {error}
               </div>
             )}
+            
+            <div className="flex justify-end">
+               <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${isSyncing ? 'text-yellow-500' : 'text-[#00e701]'}`}>
+                  <Cloud size={12} />
+                  {isSyncing ? 'Syncing DB...' : 'Cloud Ready'}
+               </div>
+            </div>
+
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Username</label>
               <input 
@@ -107,7 +125,8 @@ export default function Auth({ onAuthSuccess }: { onAuthSuccess: (user: any) => 
             
             <button 
               type="submit"
-              className="w-full py-4 bg-[#00e701] hover:bg-[#00c901] text-[#0f212e] rounded-lg font-black text-lg transition-all transform active:scale-95 shadow-[0_4px_0_0_#00a801] mt-4"
+              disabled={isSyncing}
+              className={`w-full py-4 bg-[#00e701] hover:bg-[#00c901] text-[#0f212e] rounded-lg font-black text-lg transition-all transform active:scale-95 shadow-[0_4px_0_0_#00a801] mt-4 ${isSyncing ? 'opacity-50 cursor-wait' : ''}`}
             >
               {isLogin ? 'LOG IN' : 'CREATE ACCOUNT'}
             </button>
