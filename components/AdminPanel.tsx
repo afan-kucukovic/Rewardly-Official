@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
-import { Search, Plus, User, Wallet, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Search, Plus, User, Wallet, CheckCircle2, ShieldAlert, RefreshCw, Cloud, CloudOff } from 'lucide-react';
+import { CLOUD_SYNC_URL } from '../constants';
 
-// Fix: Consolidated Lucide icon imports to include ShieldAlert at the top, removing the duplicate misplaced import at the bottom.
-export default function AdminPanel() {
+export default function AdminPanel({ onForceSync, isSyncing }: { onForceSync?: () => void, isSyncing?: boolean }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [addAmount, setAddAmount] = useState(100);
   const [message, setMessage] = useState('');
@@ -13,24 +13,50 @@ export default function AdminPanel() {
     u.username.toLowerCase().includes(searchTerm.toLowerCase()) && !u.isAdmin
   );
 
-  const addTokens = (username: string) => {
+  const addTokens = async (username: string) => {
     const allUsers = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
     if (allUsers[username]) {
       allUsers[username].balance += addAmount;
       localStorage.setItem('rewardly_users', JSON.stringify(allUsers));
-      setMessage(`Successfully added ${addAmount} tokens to ${username}`);
+      
+      // Push the update to cloud so it reflects on user's phone
+      try {
+        await fetch(CLOUD_SYNC_URL, {
+          method: 'POST',
+          body: JSON.stringify(allUsers)
+        });
+        setMessage(`Successfully added ${addAmount} tokens to ${username} (Synced to Cloud)`);
+      } catch (e) {
+        setMessage(`Added ${addAmount} to ${username} (Local only - Cloud error)`);
+      }
       setTimeout(() => setMessage(''), 3000);
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
-      <div className="bg-[#1a2c38] p-8 rounded-2xl border border-[#213743]">
-        <h1 className="text-3xl font-black mb-2 flex items-center gap-3 italic">
-          <ShieldAlert className="text-[#00e701]" />
-          ADMIN CONTROL
-        </h1>
-        <p className="text-gray-400">Manage user balances and simulate rewards.</p>
+      <div className="bg-[#1a2c38] p-8 rounded-2xl border border-[#213743] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black mb-2 flex items-center gap-3 italic">
+            <ShieldAlert className="text-[#00e701]" />
+            ADMIN CONTROL
+          </h1>
+          <p className="text-gray-400">Manage user balances and synchronize global data.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${isSyncing ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/50' : 'bg-[#00e701]/10 text-[#00e701] border border-[#00e701]/50'}`}>
+            {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <Cloud size={14} />}
+            {isSyncing ? 'Syncing...' : 'Cloud Connected'}
+          </div>
+          <button 
+            onClick={onForceSync}
+            disabled={isSyncing}
+            className="p-2 bg-[#0f212e] hover:bg-[#213743] text-gray-400 hover:text-white rounded-lg border border-[#213743] transition-colors"
+            title="Force Global Refresh"
+          >
+            <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

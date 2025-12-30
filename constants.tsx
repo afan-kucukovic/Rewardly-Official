@@ -7,6 +7,10 @@ export const COLORS = {
   accent: '#fe2247',
 };
 
+// Cloud Sync Configuration
+// Using a public KV storage to sync data across devices for simulation purposes
+export const CLOUD_SYNC_URL = 'https://kvdb.io/A2W5fG4r8zN9m2K1L7P3/rewardly_global_users';
+
 export const DISCORD_LINK = 'https://discord.gg/jPm8wvcCPb';
 export const CARD_DEPOSIT_LINK = 'https://paypal.me/AfanKucuk012';
 export const BATTLE_ROYAL_LINK = 'https://huggingface.co/spaces/cukundeda/realbattleroyal';
