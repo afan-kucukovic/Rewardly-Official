@@ -24,20 +24,20 @@ import {
   Layers,
   CircleDashed
 } from 'lucide-react';
-import Mines from './components/games/Mines';
-import Soccer from './components/games/Soccer';
-import Chicken from './components/games/Chicken';
-import Dice from './components/games/Dice';
-import Coinflip from './components/games/Coinflip';
-import Limbo from './components/games/Limbo';
-import Tower from './components/games/Tower';
-import Profile from './components/Profile';
-import Auth from './components/Auth';
-import AdminPanel from './components/AdminPanel';
-import GamesLobby from './components/GamesLobby';
-import TransactionPage from './components/TransactionPage';
-import { DISCORD_LINK, STARTING_BALANCE, ADMIN_USERNAME } from './constants';
-import { UserAccount } from './types';
+import Mines from './components/games/Mines.tsx';
+import Soccer from './components/games/Soccer.tsx';
+import Chicken from './components/games/Chicken.tsx';
+import Dice from './components/games/Dice.tsx';
+import Coinflip from './components/games/Coinflip.tsx';
+import Limbo from './components/games/Limbo.tsx';
+import Tower from './components/games/Tower.tsx';
+import Profile from './components/Profile.tsx';
+import Auth from './components/Auth.tsx';
+import AdminPanel from './components/AdminPanel.tsx';
+import GamesLobby from './components/GamesLobby.tsx';
+import TransactionPage from './components/TransactionPage.tsx';
+import { DISCORD_LINK, STARTING_BALANCE, ADMIN_USERNAME } from './constants.tsx';
+import { UserAccount } from './types.ts';
 
 const Sidebar = ({ isOpen, toggle, user, onLogout }: { isOpen: boolean, toggle: () => void, user: UserAccount | null, onLogout: () => void }) => {
   const location = useLocation();
@@ -119,13 +119,13 @@ const Header = ({ user, toggleSidebar }: { user: UserAccount | null, toggleSideb
       <div className="flex items-center gap-2 bg-[#0f212e] px-4 py-2 rounded-lg border border-[#213743]">
         <Coins size={18} className="text-[#00e701]" />
         <span className="font-bold text-sm tracking-wide">
-          {user?.balance.toLocaleString()}
+          {user?.balance.toLocaleString() ?? 0}
         </span>
       </div>
       <div className="flex items-center gap-2 bg-[#0f212e] px-4 py-2 rounded-lg border border-[#213743]">
         <Trophy size={18} className="text-yellow-500" />
         <span className="font-bold text-sm">
-          {user?.totalWins}/100
+          {user?.totalWins ?? 0}/100
         </span>
       </div>
     </div>
@@ -135,34 +135,58 @@ const Header = ({ user, toggleSidebar }: { user: UserAccount | null, toggleSideb
 const AppContent = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState<UserAccount | null>(() => {
-    const saved = localStorage.getItem('rewardly_current_user');
-    if (!saved) return null;
-    const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-    return users[saved] || null;
+    try {
+      const saved = localStorage.getItem('rewardly_current_user');
+      if (!saved) return null;
+      const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+      return users[saved] || null;
+    } catch (e) {
+      console.warn('LocalStorage access failed:', e);
+      return null;
+    }
   });
 
   const handleAuthSuccess = (userData: UserAccount) => {
     setUser(userData);
-    localStorage.setItem('rewardly_current_user', userData.username);
+    try {
+      localStorage.setItem('rewardly_current_user', userData.username);
+    } catch (e) {
+      console.warn('Failed to save current user session');
+    }
   };
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('rewardly_current_user');
+    try {
+      localStorage.removeItem('rewardly_current_user');
+    } catch (e) {
+      console.warn('Failed to clear user session');
+    }
   };
 
   const updateStats = (win: boolean, amount: number) => {
     if (!user) return;
-    const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
-    const updatedUser = {
-      ...user,
-      balance: user.balance + amount,
-      totalWins: win ? user.totalWins + 1 : user.totalWins,
-      gamesPlayed: user.gamesPlayed + 1
-    };
-    users[user.username] = updatedUser;
-    localStorage.setItem('rewardly_users', JSON.stringify(users));
-    setUser(updatedUser);
+    try {
+      const users = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+      const updatedUser = {
+        ...user,
+        balance: user.balance + amount,
+        totalWins: win ? user.totalWins + 1 : user.totalWins,
+        gamesPlayed: user.gamesPlayed + 1
+      };
+      users[user.username] = updatedUser;
+      localStorage.setItem('rewardly_users', JSON.stringify(users));
+      setUser(updatedUser);
+    } catch (e) {
+      console.error('Failed to update user stats in storage', e);
+      // Update local state anyway even if storage fails
+      setUser(prev => prev ? ({
+        ...prev,
+        balance: prev.balance + amount,
+        totalWins: win ? prev.totalWins + 1 : prev.totalWins,
+        gamesPlayed: prev.gamesPlayed + 1
+      }) : null);
+    }
   };
 
   if (!user) {
