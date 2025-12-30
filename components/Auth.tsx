@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { LogIn, UserPlus, ShieldAlert, RefreshCw, Cloud } from 'lucide-react';
+import { LogIn, UserPlus, ShieldAlert, RefreshCw, Cloud, Wifi, WifiOff } from 'lucide-react';
 import { ADMIN_USERNAME, STARTING_BALANCE } from '../constants';
 
-export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing }: { onAuthSuccess: (user: any) => void, onSyncRequested: () => Promise<any>, isSyncing: boolean }) {
+export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing, online }: { onAuthSuccess: (user: any) => void, onSyncRequested: () => Promise<any>, isSyncing: boolean, online: boolean }) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +19,7 @@ export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing }: { on
     e.preventDefault();
     setError('');
     
-    // Always fetch latest data before an auth attempt
+    // Always fetch latest data before an auth attempt to see users from other devices
     const users = await onSyncRequested();
 
     if (isLogin) {
@@ -70,7 +70,7 @@ export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing }: { on
         {bootstrapping && (
           <div className="absolute inset-0 bg-[#0f212e]/90 z-50 flex flex-col items-center justify-center gap-4 backdrop-blur-sm">
             <RefreshCw className="text-[#00e701] animate-spin" size={48} />
-            <p className="text-sm font-bold uppercase tracking-widest text-[#00e701]">Connecting to Rewardly Cloud...</p>
+            <p className="text-sm font-bold uppercase tracking-widest text-[#00e701]">Establishing Secure Sync...</p>
           </div>
         )}
         
@@ -80,7 +80,12 @@ export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing }: { on
               <span className="text-3xl font-black text-[#00e701]">R</span>
             </div>
             <h1 className="text-3xl font-black tracking-tight text-white italic">REWARDLY</h1>
-            <p className="text-gray-400 text-sm mt-1">{isLogin ? 'Welcome back, player!' : 'Create your player account'}</p>
+            <div className="flex items-center justify-center gap-2 mt-2">
+               <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${online ? 'bg-[#00e701]/10 text-[#00e701]' : 'bg-red-500/10 text-red-500 animate-pulse'}`}>
+                  {online ? <Wifi size={12} /> : <WifiOff size={12} />}
+                  {online ? 'Global Server Linked' : 'Server Connection Lost'}
+               </div>
+            </div>
           </div>
 
           <form onSubmit={handleAction} className="space-y-4">
@@ -91,13 +96,6 @@ export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing }: { on
               </div>
             )}
             
-            <div className="flex justify-end">
-               <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${isSyncing ? 'text-yellow-500' : 'text-[#00e701]'}`}>
-                  <Cloud size={12} />
-                  {isSyncing ? 'Syncing DB...' : 'Cloud Ready'}
-               </div>
-            </div>
-
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Username</label>
               <input 
@@ -125,19 +123,26 @@ export default function Auth({ onAuthSuccess, onSyncRequested, isSyncing }: { on
             
             <button 
               type="submit"
-              disabled={isSyncing}
-              className={`w-full py-4 bg-[#00e701] hover:bg-[#00c901] text-[#0f212e] rounded-lg font-black text-lg transition-all transform active:scale-95 shadow-[0_4px_0_0_#00a801] mt-4 ${isSyncing ? 'opacity-50 cursor-wait' : ''}`}
+              disabled={isSyncing || (!online && isLogin)}
+              className={`w-full py-4 bg-[#00e701] hover:bg-[#00c901] text-[#0f212e] rounded-lg font-black text-lg transition-all transform active:scale-95 shadow-[0_4px_0_0_#00a801] mt-4 flex items-center justify-center gap-3 ${isSyncing ? 'opacity-50 cursor-wait' : ''}`}
             >
+              {isSyncing && <RefreshCw size={20} className="animate-spin" />}
               {isLogin ? 'LOG IN' : 'CREATE ACCOUNT'}
             </button>
           </form>
           
-          <div className="mt-8 text-center">
+          <div className="mt-8 text-center flex flex-col gap-4">
             <button 
               onClick={() => setIsLogin(!isLogin)}
               className="text-gray-400 hover:text-white text-sm font-semibold underline underline-offset-4"
             >
               {isLogin ? "Need an account? Sign up" : "Already have an account? Log in"}
+            </button>
+            <button 
+              onClick={() => onSyncRequested()}
+              className="text-[10px] text-gray-600 font-bold uppercase hover:text-[#00e701] transition-colors"
+            >
+              Force Sync Database
             </button>
           </div>
         </div>

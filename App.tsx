@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { 
   Trophy, 
@@ -26,7 +26,9 @@ import {
   Languages,
   Swords,
   Cloud,
-  RefreshCw
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import Mines from './components/games/Mines.tsx';
 import Soccer from './components/games/Soccer.tsx';
@@ -112,7 +114,7 @@ const Sidebar = ({ isOpen, toggle, user, onLogout, lang }: { isOpen: boolean, to
   );
 };
 
-const Header = ({ user, toggleSidebar, lang, isSyncing }: { user: UserAccount | null, toggleSidebar: () => void, lang: 'en' | 'bs', isSyncing: boolean }) => {
+const Header = ({ user, toggleSidebar, lang, isSyncing, online }: { user: UserAccount | null, toggleSidebar: () => void, lang: 'en' | 'bs', isSyncing: boolean, online: boolean }) => {
   const t = (key: string) => TRANSLATIONS[key]?.[lang] || key;
   return (
     <header className="sticky top-0 z-40 h-16 bg-[#1a2c38] border-b border-[#213743] px-4 md:px-8 flex items-center justify-between">
@@ -120,13 +122,13 @@ const Header = ({ user, toggleSidebar, lang, isSyncing }: { user: UserAccount | 
         <button onClick={toggleSidebar} className="md:hidden p-2 text-gray-400">
           <Menu size={24} />
         </button>
-        <div className="hidden md:flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-3">
           <span className="text-sm font-semibold text-gray-400 italic">{t('welcome_back')}, {user?.username}</span>
-          {isSyncing ? (
-            <RefreshCw size={14} className="text-[#00e701] animate-spin" />
-          ) : (
-            <Cloud size={14} className="text-[#00e701]" />
-          )}
+          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${online ? 'bg-[#00e701]/10 text-[#00e701]' : 'bg-red-500/10 text-red-500'}`}>
+            {online ? <Wifi size={10} /> : <WifiOff size={10} />}
+            {online ? 'Online' : 'Offline'}
+          </div>
+          {isSyncing && <RefreshCw size={12} className="text-[#00e701] animate-spin" />}
         </div>
       </div>
 
@@ -151,6 +153,7 @@ const Header = ({ user, toggleSidebar, lang, isSyncing }: { user: UserAccount | 
 const AppContent = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [online, setOnline] = useState(true);
   const [users, setUsers] = useState<Record<string, UserAccount>>({});
   const [lang, setLang] = useState<'en' | 'bs'>(() => {
     return (localStorage.getItem('rewardly_lang') as 'en' | 'bs') || 'en';
@@ -160,48 +163,77 @@ const AppContent = () => {
     return localStorage.getItem('rewardly_current_user');
   });
 
-  const pullFromCloud = useCallback(async () => {
+  const usersRef = useRef(users);
+  useEffect(() => { usersRef.current = users; }, [users]);
+
+  // Unified Pull & Merge Function
+  const syncGlobalData = useCallback(async () => {
     try {
       setIsSyncing(true);
       const res = await fetch(CLOUD_SYNC_URL);
       if (res.ok) {
         const cloudData = await res.json();
-        // Force state update and local cache update
-        setUsers(cloudData);
-        localStorage.setItem('rewardly_users', JSON.stringify(cloudData));
-        return cloudData;
+        const localData = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+        
+        // Robust Merge Logic: Cloud wins but we NEVER delete local users that aren't in cloud yet
+        const merged = { ...localData, ...cloudData };
+        
+        setUsers(merged);
+        localStorage.setItem('rewardly_users', JSON.stringify(merged));
+        setOnline(true);
+        return merged;
+      } else if (res.status === 404) {
+        // Bucket doesn't exist yet, this is okay
+        const local = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
+        setUsers(local);
+        return local;
       }
     } catch (e) {
-      console.warn('Cloud pull failed, falling back to local storage', e);
+      console.warn('Sync failed', e);
+      setOnline(false);
       const local = JSON.parse(localStorage.getItem('rewardly_users') || '{}');
       setUsers(local);
       return local;
     } finally {
       setIsSyncing(false);
     }
-    return {};
+    return usersRef.current;
   }, []);
 
   const pushToCloud = async (latestUsers: Record<string, UserAccount>) => {
     try {
       setIsSyncing(true);
+      // ALWAYS pull first to get others' updates, then merge ours on top, then push
+      const cloudRes = await fetch(CLOUD_SYNC_URL);
+      let cloudData = {};
+      if (cloudRes.ok) cloudData = await cloudRes.json();
+      
+      const finalToPush = { ...cloudData, ...latestUsers };
+      
       await fetch(CLOUD_SYNC_URL, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(latestUsers)
+        body: JSON.stringify(finalToPush)
       });
-      localStorage.setItem('rewardly_users', JSON.stringify(latestUsers));
+      
+      setUsers(finalToPush);
+      localStorage.setItem('rewardly_users', JSON.stringify(finalToPush));
+      setOnline(true);
     } catch (e) {
-      console.error('Failed to sync to cloud', e);
+      console.error('Push failed', e);
+      setOnline(false);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Sync on mount
+  // Initial Sync
   useEffect(() => {
-    pullFromCloud();
-  }, [pullFromCloud]);
+    syncGlobalData();
+    // Auto-refresh interval (every 30 seconds for all users, every 5 for admin panel inside component)
+    const interval = setInterval(syncGlobalData, 30000);
+    return () => clearInterval(interval);
+  }, [syncGlobalData]);
 
   const toggleLang = () => {
     const next = lang === 'en' ? 'bs' : 'en';
@@ -210,18 +242,18 @@ const AppContent = () => {
   };
 
   const handleAuthSuccess = async (userData: UserAccount) => {
-    // 1. Pull latest to ensure we don't overwrite others
-    const latest = await pullFromCloud();
+    // 1. Force a sync to make sure we don't have a conflict
+    const latest = await syncGlobalData();
     
-    // 2. Add/Update user
+    // 2. Add our new/logged-in user
     const updated = { ...latest, [userData.username]: userData };
     
-    // 3. Update local states
+    // 3. Update state
     setUsers(updated);
     setCurrentUserKey(userData.username);
     localStorage.setItem('rewardly_current_user', userData.username);
     
-    // 4. Push to cloud
+    // 4. Force push
     await pushToCloud(updated);
   };
 
@@ -231,11 +263,11 @@ const AppContent = () => {
   };
 
   const updateStats = async (win: boolean, amount: number) => {
-    if (!currentUserKey || !users[currentUserKey]) return;
+    if (!currentUserKey) return;
     
-    // Pull latest to ensure consistency
-    const latest = await pullFromCloud();
-    const currentUser = latest[currentUserKey] || users[currentUserKey];
+    // Use local first for instant feedback
+    const currentUser = users[currentUserKey];
+    if (!currentUser) return;
 
     const updatedUser = {
       ...currentUser,
@@ -244,16 +276,17 @@ const AppContent = () => {
       gamesPlayed: currentUser.gamesPlayed + 1
     };
 
-    const updatedDatabase = { ...latest, [currentUserKey]: updatedUser };
-    setUsers(updatedDatabase);
+    const updatedDB = { ...users, [currentUserKey]: updatedUser };
+    setUsers(updatedDB);
     
-    await pushToCloud(updatedDatabase);
+    // Background sync
+    await pushToCloud(updatedDB);
   };
 
   const currentUser = currentUserKey ? users[currentUserKey] : null;
 
   if (!currentUserKey) {
-    return <Auth onAuthSuccess={handleAuthSuccess} onSyncRequested={pullFromCloud} isSyncing={isSyncing} />;
+    return <Auth onAuthSuccess={handleAuthSuccess} onSyncRequested={syncGlobalData} isSyncing={isSyncing} online={online} />;
   }
 
   return (
@@ -261,7 +294,7 @@ const AppContent = () => {
       <Sidebar isOpen={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} user={currentUser} onLogout={handleLogout} lang={lang} />
       
       <div className="md:ml-64 flex flex-col min-h-screen">
-        <Header user={currentUser} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} lang={lang} isSyncing={isSyncing} />
+        <Header user={currentUser} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} lang={lang} isSyncing={isSyncing} online={online} />
         
         <main className="flex-1 p-4 md:p-8">
           <Routes>
@@ -276,7 +309,7 @@ const AppContent = () => {
             <Route path="/battle-royal" element={<BattleRoyal onResult={updateStats} lang={lang} />} />
             <Route path="/transactions" element={<TransactionPage user={currentUser!} lang={lang} />} />
             <Route path="/profile" element={<Profile stats={currentUser!} lang={lang} />} />
-            <Route path="/admin" element={currentUser?.isAdmin ? <AdminPanel users={users} setUsers={setUsers} onPush={pushToCloud} onPull={pullFromCloud} isSyncing={isSyncing} /> : <Navigate to="/" />} />
+            <Route path="/admin" element={currentUser?.isAdmin ? <AdminPanel users={users} setUsers={setUsers} onPush={pushToCloud} onPull={syncGlobalData} isSyncing={isSyncing} /> : <Navigate to="/" />} />
           </Routes>
         </main>
 

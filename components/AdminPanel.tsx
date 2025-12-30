@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, User, Wallet, CheckCircle2, ShieldAlert, RefreshCw, Cloud } from 'lucide-react';
+import { Search, Plus, User, Wallet, CheckCircle2, ShieldAlert, RefreshCw, Cloud, Users } from 'lucide-react';
 import { UserAccount } from '../types';
 
 interface AdminPanelProps {
@@ -16,9 +16,13 @@ export default function AdminPanel({ users, setUsers, onPush, onPull, isSyncing 
   const [addAmount, setAddAmount] = useState(100);
   const [message, setMessage] = useState('');
 
-  // Pull latest data when entering admin panel to ensure all cross-device users are seen
+  // Auto-poll the cloud every 5 seconds while Admin Panel is open
   useEffect(() => {
     onPull();
+    const interval = setInterval(() => {
+      if (!isSyncing) onPull();
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const userList = Object.values(users).filter((u: UserAccount) => 
@@ -56,20 +60,20 @@ export default function AdminPanel({ users, setUsers, onPush, onPull, isSyncing 
             <ShieldAlert className="text-[#00e701]" />
             ADMIN CONTROL
           </h1>
-          <p className="text-gray-400">Manage global user database across all devices.</p>
+          <p className="text-gray-400">Manage global player database. Updates every 5s.</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${isSyncing ? 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/50' : 'bg-[#00e701]/10 text-[#00e701] border border-[#00e701]/50'}`}>
-            {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <Cloud size={14} />}
-            {isSyncing ? 'Syncing...' : 'Live Sync On'}
+          <div className="bg-[#0f212e] px-4 py-2 rounded-xl border border-[#213743] flex items-center gap-2">
+             <Users size={18} className="text-[#00e701]" />
+             <span className="font-black text-sm">{userList.length} Players</span>
           </div>
           <button 
             onClick={() => onPull()}
             disabled={isSyncing}
-            className="p-2 bg-[#0f212e] hover:bg-[#213743] text-gray-400 hover:text-white rounded-lg border border-[#213743] transition-colors"
-            title="Refresh All Devices"
+            className="p-3 bg-[#0f212e] hover:bg-[#213743] text-[#00e701] rounded-xl border border-[#00e701]/30 transition-all hover:scale-105 active:scale-95"
+            title="Force Global Refresh"
           >
-            <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+            <RefreshCw size={20} className={isSyncing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
@@ -83,6 +87,7 @@ export default function AdminPanel({ users, setUsers, onPush, onPull, isSyncing 
             onChange={(e) => setAddAmount(Number(e.target.value))}
             className="w-full bg-[#0f212e] border border-[#213743] rounded-lg p-3 text-white focus:outline-none focus:border-[#00e701]"
           />
+          <p className="text-[10px] text-gray-500 mt-3 italic">Grant tokens to specific players on any device.</p>
         </div>
 
         <div className="md:col-span-2 bg-[#1a2c38] p-6 rounded-xl border border-[#213743] flex flex-col">
@@ -90,7 +95,7 @@ export default function AdminPanel({ users, setUsers, onPush, onPull, isSyncing 
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
             <input 
               type="text"
-              placeholder="Search all players..."
+              placeholder="Filter players by username..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-[#0f212e] border border-[#213743] rounded-lg p-3 pl-10 text-white focus:outline-none focus:border-[#00e701]"
@@ -98,35 +103,38 @@ export default function AdminPanel({ users, setUsers, onPush, onPull, isSyncing 
           </div>
 
           {message && (
-            <div className="mb-4 bg-[#00e701]/10 border border-[#00e701] text-[#00e701] p-3 rounded-lg text-sm flex items-center gap-2">
+            <div className="mb-4 bg-[#00e701]/10 border border-[#00e701] text-[#00e701] p-3 rounded-lg text-sm flex items-center gap-2 animate-bounce">
               <CheckCircle2 size={16} />
               {message}
             </div>
           )}
 
-          <div className="space-y-2 overflow-y-auto max-h-[400px] pr-2">
+          <div className="space-y-2 overflow-y-auto max-h-[400px] pr-2 custom-scrollbar">
             {userList.length > 0 ? (userList.map((u: UserAccount) => (
-              <div key={u.username} className="flex items-center justify-between p-4 bg-[#0f212e] rounded-lg border border-[#213743] hover:border-[#2f4553] transition-colors">
+              <div key={u.username} className="flex items-center justify-between p-4 bg-[#0f212e] rounded-lg border border-[#213743] hover:border-[#00e701]/30 transition-all">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#2f4553] flex items-center justify-center font-bold text-[#00e701]">
+                  <div className="w-10 h-10 rounded-full bg-[#2f4553] border border-[#213743] flex items-center justify-center font-bold text-[#00e701]">
                     {u.username[0].toUpperCase()}
                   </div>
                   <div>
                     <div className="font-bold">{u.username}</div>
-                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                      <Wallet size={12} /> {u.balance.toLocaleString()} tokens
+                    <div className="text-[10px] text-gray-500 flex items-center gap-1 uppercase tracking-tighter">
+                      <Wallet size={10} /> {u.balance.toLocaleString()} tokens
                     </div>
                   </div>
                 </div>
                 <button 
                   onClick={() => addTokens(u.username)}
-                  className="bg-[#00e701] text-[#0f212e] px-4 py-2 rounded font-black text-xs uppercase flex items-center gap-2 hover:bg-[#00c901] transition-all transform active:scale-95"
+                  className="bg-[#00e701] text-[#0f212e] px-4 py-2 rounded font-black text-[10px] uppercase flex items-center gap-1.5 hover:bg-[#00c901] transition-all transform active:scale-95 shadow-[0_2px_0_0_#00a801]"
                 >
-                  <Plus size={14} /> Grant
+                  <Plus size={12} /> Grant
                 </button>
               </div>
             ))) : (
-              <div className="text-center py-10 text-gray-500 italic">No registered players found</div>
+              <div className="text-center py-20 text-gray-500 italic flex flex-col items-center gap-2">
+                 <RefreshCw size={32} className="animate-spin opacity-20 mb-2" />
+                 Waiting for players to link...
+              </div>
             )}
           </div>
         </div>
