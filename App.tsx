@@ -22,7 +22,9 @@ import {
   Gamepad2,
   Zap,
   Layers,
-  CircleDashed
+  CircleDashed,
+  Languages,
+  Swords
 } from 'lucide-react';
 import Mines from './components/games/Mines.tsx';
 import Soccer from './components/games/Soccer.tsx';
@@ -31,29 +33,33 @@ import Dice from './components/games/Dice.tsx';
 import Coinflip from './components/games/Coinflip.tsx';
 import Limbo from './components/games/Limbo.tsx';
 import Tower from './components/games/Tower.tsx';
+import BattleRoyal from './components/games/BattleRoyal.tsx';
 import Profile from './components/Profile.tsx';
 import Auth from './components/Auth.tsx';
 import AdminPanel from './components/AdminPanel.tsx';
 import GamesLobby from './components/GamesLobby.tsx';
 import TransactionPage from './components/TransactionPage.tsx';
-import { DISCORD_LINK, STARTING_BALANCE, ADMIN_USERNAME } from './constants.tsx';
+import { DISCORD_LINK, STARTING_BALANCE, ADMIN_USERNAME, TRANSLATIONS } from './constants.tsx';
 import { UserAccount } from './types.ts';
 
-const Sidebar = ({ isOpen, toggle, user, onLogout }: { isOpen: boolean, toggle: () => void, user: UserAccount | null, onLogout: () => void }) => {
+const Sidebar = ({ isOpen, toggle, user, onLogout, lang }: { isOpen: boolean, toggle: () => void, user: UserAccount | null, onLogout: () => void, lang: 'en' | 'bs' }) => {
   const location = useLocation();
   
+  const t = (key: string) => TRANSLATIONS[key]?.[lang] || key;
+
   const navItems = [
-    { name: 'All Games', path: '/', icon: LayoutGrid },
-    { name: 'Mines', path: '/mines', icon: ShieldCheck },
-    { name: 'Chicken', path: '/chicken', icon: Bird },
-    { name: 'Limbo', path: '/limbo', icon: Zap },
-    { name: 'Tower', path: '/tower', icon: Layers },
-    { name: 'Deposit / Withdraw', path: '/transactions', icon: Wallet },
-    { name: 'My Profile', path: '/profile', icon: User },
+    { name: t('all_games'), path: '/', icon: LayoutGrid },
+    { name: t('battle_royal'), path: '/battle-royal', icon: Swords },
+    { name: t('mines'), path: '/mines', icon: ShieldCheck },
+    { name: t('chicken'), path: '/chicken', icon: Bird },
+    { name: t('limbo'), path: '/limbo', icon: Zap },
+    { name: t('tower'), path: '/tower', icon: Layers },
+    { name: t('deposit_withdraw'), path: '/transactions', icon: Wallet },
+    { name: t('my_profile'), path: '/profile', icon: User },
   ];
 
   if (user?.isAdmin) {
-    navItems.push({ name: 'Admin Panel', path: '/admin', icon: Settings });
+    navItems.push({ name: t('admin_panel'), path: '/admin', icon: Settings });
   }
 
   return (
@@ -90,14 +96,14 @@ const Sidebar = ({ isOpen, toggle, user, onLogout }: { isOpen: boolean, toggle: 
             className="flex items-center gap-3 px-4 py-3 bg-[#5865F2] hover:bg-[#4752C4] text-white rounded-lg font-bold transition-all"
           >
             <MessageSquare size={20} />
-            Join Discord
+            {t('join_discord')}
           </a>
           <button 
             onClick={onLogout}
             className="flex items-center gap-3 w-full px-4 py-3 text-gray-400 hover:text-white hover:bg-[#fe2247]/10 rounded-lg transition-colors"
           >
             <LogOut size={20} />
-            Logout
+            {t('logout')}
           </button>
         </div>
       </div>
@@ -105,35 +111,41 @@ const Sidebar = ({ isOpen, toggle, user, onLogout }: { isOpen: boolean, toggle: 
   );
 };
 
-const Header = ({ user, toggleSidebar }: { user: UserAccount | null, toggleSidebar: () => void }) => (
-  <header className="sticky top-0 z-40 h-16 bg-[#1a2c38] border-b border-[#213743] px-4 md:px-8 flex items-center justify-between">
-    <button onClick={toggleSidebar} className="md:hidden p-2 text-gray-400">
-      <Menu size={24} />
-    </button>
-    
-    <div className="hidden md:flex items-center gap-6">
-      <span className="text-sm font-semibold text-gray-400 italic">Welcome back, {user?.username}</span>
-    </div>
+const Header = ({ user, toggleSidebar, lang }: { user: UserAccount | null, toggleSidebar: () => void, lang: 'en' | 'bs' }) => {
+  const t = (key: string) => TRANSLATIONS[key]?.[lang] || key;
+  return (
+    <header className="sticky top-0 z-40 h-16 bg-[#1a2c38] border-b border-[#213743] px-4 md:px-8 flex items-center justify-between">
+      <button onClick={toggleSidebar} className="md:hidden p-2 text-gray-400">
+        <Menu size={24} />
+      </button>
+      
+      <div className="hidden md:flex items-center gap-6">
+        <span className="text-sm font-semibold text-gray-400 italic">{t('welcome_back')}, {user?.username}</span>
+      </div>
 
-    <div className="flex items-center gap-4">
-      <div className="flex items-center gap-2 bg-[#0f212e] px-4 py-2 rounded-lg border border-[#213743]">
-        <Coins size={18} className="text-[#00e701]" />
-        <span className="font-bold text-sm tracking-wide">
-          {user?.balance.toLocaleString() ?? 0}
-        </span>
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 bg-[#0f212e] px-4 py-2 rounded-lg border border-[#213743]">
+          <Coins size={18} className="text-[#00e701]" />
+          <span className="font-bold text-sm tracking-wide">
+            {user?.balance.toLocaleString() ?? 0}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 bg-[#0f212e] px-4 py-2 rounded-lg border border-[#213743]">
+          <Trophy size={18} className="text-yellow-500" />
+          <span className="font-bold text-sm">
+            {user?.totalWins ?? 0}/100
+          </span>
+        </div>
       </div>
-      <div className="flex items-center gap-2 bg-[#0f212e] px-4 py-2 rounded-lg border border-[#213743]">
-        <Trophy size={18} className="text-yellow-500" />
-        <span className="font-bold text-sm">
-          {user?.totalWins ?? 0}/100
-        </span>
-      </div>
-    </div>
-  </header>
-);
+    </header>
+  );
+};
 
 const AppContent = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [lang, setLang] = useState<'en' | 'bs'>(() => {
+    return (localStorage.getItem('rewardly_lang') as 'en' | 'bs') || 'en';
+  });
   const [user, setUser] = useState<UserAccount | null>(() => {
     try {
       const saved = localStorage.getItem('rewardly_current_user');
@@ -145,6 +157,12 @@ const AppContent = () => {
       return null;
     }
   });
+
+  const toggleLang = () => {
+    const next = lang === 'en' ? 'bs' : 'en';
+    setLang(next);
+    localStorage.setItem('rewardly_lang', next);
+  };
 
   const handleAuthSuccess = (userData: UserAccount) => {
     setUser(userData);
@@ -179,7 +197,6 @@ const AppContent = () => {
       setUser(updatedUser);
     } catch (e) {
       console.error('Failed to update user stats in storage', e);
-      // Update local state anyway even if storage fails
       setUser(prev => prev ? ({
         ...prev,
         balance: prev.balance + amount,
@@ -194,15 +211,15 @@ const AppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f212e]">
-      <Sidebar isOpen={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} user={user} onLogout={handleLogout} />
+    <div className="min-h-screen bg-[#0f212e] relative">
+      <Sidebar isOpen={sidebarOpen} toggle={() => setSidebarOpen(!sidebarOpen)} user={user} onLogout={handleLogout} lang={lang} />
       
       <div className="md:ml-64 flex flex-col min-h-screen">
-        <Header user={user} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+        <Header user={user} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} lang={lang} />
         
         <main className="flex-1 p-4 md:p-8">
           <Routes>
-            <Route path="/" element={<GamesLobby />} />
+            <Route path="/" element={<GamesLobby lang={lang} />} />
             <Route path="/mines" element={<Mines onResult={updateStats} balance={user.balance} />} />
             <Route path="/soccer" element={<Soccer onResult={updateStats} balance={user.balance} />} />
             <Route path="/chicken" element={<Chicken onResult={updateStats} balance={user.balance} />} />
@@ -210,8 +227,9 @@ const AppContent = () => {
             <Route path="/coinflip" element={<Coinflip onResult={updateStats} balance={user.balance} />} />
             <Route path="/limbo" element={<Limbo onResult={updateStats} balance={user.balance} />} />
             <Route path="/tower" element={<Tower onResult={updateStats} balance={user.balance} />} />
-            <Route path="/transactions" element={<TransactionPage user={user} />} />
-            <Route path="/profile" element={<Profile stats={user} />} />
+            <Route path="/battle-royal" element={<BattleRoyal onResult={updateStats} lang={lang} />} />
+            <Route path="/transactions" element={<TransactionPage user={user} lang={lang} />} />
+            <Route path="/profile" element={<Profile stats={user} lang={lang} />} />
             <Route path="/admin" element={user.isAdmin ? <AdminPanel /> : <Navigate to="/" />} />
           </Routes>
         </main>
@@ -220,6 +238,15 @@ const AppContent = () => {
           <p className="text-[#00e701] font-bold uppercase tracking-widest opacity-80">Made by afan kucuk 2025</p>
         </footer>
       </div>
+
+      <button 
+        onClick={toggleLang}
+        className="fixed bottom-6 left-6 md:left-[270px] z-50 p-3 bg-[#1a2c38] hover:bg-[#213743] text-white rounded-full shadow-2xl border border-[#213743] flex items-center gap-2 transition-all transform hover:scale-110 active:scale-95 group"
+        title={lang === 'en' ? 'Prebaci na Bosanski' : 'Switch to English'}
+      >
+        <Languages size={20} className="text-[#00e701]" />
+        <span className="text-xs font-bold uppercase tracking-widest">{lang === 'en' ? 'EN' : 'BS'}</span>
+      </button>
     </div>
   );
 };
